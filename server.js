@@ -50,6 +50,20 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
+// Helper function to upload buffer to Cloudinary
+const uploadToCloudinary = (fileBuffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: "poultry" },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    uploadStream.end(fileBuffer);
+  });
+};
+
 
 
 // MongoDB connection
@@ -218,6 +232,17 @@ app.post("/api/signup", upload.single("profilePicture"), async (req, res) => {
 
     const paymentStatus = isFirstUser ? 'approved' : 'unpaid';
 
+    let profilePictureUrl = "";
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file.buffer);
+        profilePictureUrl = uploadResult.secure_url;
+      } catch (uploadError) {
+        console.error("Cloudinary upload error:", uploadError);
+        return res.status(500).json({ error: "Failed to upload profile picture to Cloudinary" });
+      }
+    }
+
     const newUser = new User({
 
       ...userData,
@@ -226,7 +251,7 @@ app.post("/api/signup", upload.single("profilePicture"), async (req, res) => {
 
       password,
 
-      profilePicture: req.file ? req.file.filename : "",
+      profilePicture: profilePictureUrl,
 
       dob: new Date(userData.dob),
 
