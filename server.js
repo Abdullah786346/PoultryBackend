@@ -23,7 +23,11 @@ const app = express();
 // Middleware
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
+  origin: (origin, callback) => {
+    // Allow local development and production domains
+    // Or dynamically echo the origin to support credentials from any domain
+    callback(null, true);
+  },
   credentials: true
 }));
 
