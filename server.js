@@ -38,6 +38,12 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from uploads directory
 app.use('/uploads', express.static('uploads'));
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "Poultry Backend Running Successfully"
+  });
+});
+
 
 
 // File upload configuration
@@ -70,13 +76,48 @@ const uploadToCloudinary = (fileBuffer) => {
 
 
 
-// MongoDB connection
+// MongoDB connection (Serverless-friendly)
+let cachedConnection = null;
 
-mongoose.connect(process.env.MONGO_URI)
+const connectDB = async () => {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  
+  if (cachedConnection) {
+    try {
+      await cachedConnection;
+      return mongoose.connection;
+    } catch (e) {
+      cachedConnection = null;
+    }
+  }
 
-  .then(() => console.log("MongoDB connected"))
+  console.log("Connecting to MongoDB...");
+  cachedConnection = mongoose.connect(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+  });
 
-  .catch(err => console.error("MongoDB connection error:", err));
+  try {
+    await cachedConnection;
+    console.log("MongoDB connected successfully");
+    return mongoose.connection;
+  } catch (err) {
+    console.error("MongoDB connection error:", err);
+    cachedConnection = null;
+    throw err;
+  }
+};
+
+// Database connection middleware to ensure connection on every request
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(500).json({ error: "Database connection failed: " + err.message });
+  }
+});
 
 
 
@@ -939,26 +980,28 @@ app.use((err, req, res, next) => {
 
 
 
-// Start server
-const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
-
-// Handle server errors
-server.on('error', (err) => {
-  console.error('Server error:', err);
-  process.exit(1);
-});
-
-// Handle process termination
-process.on('SIGINT', () => {
-  console.log('Shutting down server...');
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
+// Start server (only in non-production / local development environment)
+if (process.env.NODE_ENV !== "production") {
+  const PORT = process.env.PORT || 5000;
+  const server = app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
   });
-});
+
+  // Handle server errors
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+    process.exit(1);
+  });
+
+  // Handle process termination
+  process.on('SIGINT', () => {
+    console.log('Shutting down server...');
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  });
+}
 
 export default app;
 
