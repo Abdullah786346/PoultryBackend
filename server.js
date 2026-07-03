@@ -12,6 +12,8 @@ import bcrypt from "bcryptjs";
 
 import jwt from "jsonwebtoken";
 
+import OpenAI from "openai";
+
 
 
 dotenv.config();
@@ -978,6 +980,62 @@ app.use((err, req, res, next) => {
 
 });
 
+// Chatbot API endpoint
+app.post("/api/chatbot", async (req, res) => {
+  try {
+    const { message, conversationHistory } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    // Initialize Groq client (compatible with OpenAI API format)
+    const openai = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1",
+    });
+
+    // System prompt for the chatbot
+    const systemPrompt = `You are a helpful assistant for the Poultry Professionals Society (PPS). 
+Your role is to help users with information about:
+- Membership details and benefits
+- Events and conferences
+- Resources and educational materials
+- Contact information
+- General questions about the poultry industry
+
+Be friendly, professional, and concise. If you don't know specific information about PPS, 
+direct users to contact the society directly.`;
+
+    // Convert conversation history to OpenAI format
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      { role: "user", content: message },
+    ];
+
+    // Call Groq API (using Llama 3.1 8B model)
+    const completion = await openai.chat.completions.create({
+      model: "llama-3.1-8b-instant",
+      messages: messages,
+      max_tokens: 500,
+      temperature: 0.7,
+    });
+
+    const reply = completion.choices[0].message.content;
+
+    res.json({ reply });
+  } catch (error) {
+    console.error("Chatbot error:", error);
+    res.status(500).json({ 
+      error: "Failed to process chat message",
+      details: error.message 
+    });
+  }
+});
 
 
 // Start server (only in non-production / local development environment)
